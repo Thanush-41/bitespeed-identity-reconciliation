@@ -1,115 +1,24 @@
-# Bitespeed Identity Reconciliation Service
+﻿# Bitespeed Identity Reconciliation
 
-A backend service for FluxKart.com that identifies and links customer contacts across multiple purchases. Built with Node.js, TypeScript, Express, and PostgreSQL.
+Backend service for the Bitespeed Identity Reconciliation task. Identifies and links customer contacts across multiple purchases using shared email or phone number.
 
-## 🚀 Live Endpoint
+## Live Endpoints
 
-**Base URL:** `https://bitespeed-identity-a4bc.onrender.com`
+| Resource | URL |
+|---|---|
+| Identify API | `POST https://bitespeed-identity-a4bc.onrender.com/identify` |
+| Swagger UI | `https://bitespeed-identity-a4bc.onrender.com/api-docs` |
+| Health Check | `GET https://bitespeed-identity-a4bc.onrender.com/health` |
+| Source Code | `https://github.com/Thanush-41/bitespeed-identity-reconciliation` |
 
-**Identify Endpoint:** `POST https://bitespeed-identity-a4bc.onrender.com/identify`
+## Task
 
-**Swagger UI:** `https://bitespeed-identity-a4bc.onrender.com/api-docs`
+Given an email and/or phone number, `POST /identify` returns a consolidated view of all contacts that belong to the same person. Contacts sharing any piece of identifying information are linked into a cluster with one primary and zero or more secondary contacts.
 
-## 📋 Features
+## POST /identify
 
-- **Identity Reconciliation**: Links customer contacts based on shared email or phone number
-- **Cluster Management**: Maintains primary/secondary contact relationships
-- **Automatic Merging**: Combines separate contact clusters when new information links them
-- **RESTful API**: Simple POST endpoint for contact identification
+**Request**
 
-## 🛠 Tech Stack
-
-- **Runtime**: Node.js 18+
-- **Language**: TypeScript
-- **Framework**: Express.js
-- **Database**: PostgreSQL
-- **ORM**: Prisma
-- **Validation**: Zod
-- **Testing**: Jest + Supertest
-
-## 📁 Project Structure
-
-```
-src/
-├── index.ts              # Entry point
-├── app.ts                # Express app configuration
-├── config/
-│   └── database.ts       # Prisma client singleton
-├── controllers/
-│   └── identifyController.ts
-├── services/
-│   └── contactService.ts # Core linking logic
-├── repositories/
-│   └── contactRepository.ts
-├── routes/
-│   └── identify.ts
-├── types/
-│   └── contact.ts
-├── utils/
-│   └── errors.ts
-└── __tests__/
-    ├── unit/
-    └── integration/
-prisma/
-└── schema.prisma
-```
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- PostgreSQL database
-- npm or yarn
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd bitespeed-identity-reconciliation
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` with your database URL:
-   ```
-   DATABASE_URL="postgresql://username:password@localhost:5432/bitespeed?schema=public"
-   PORT=3000
-   ```
-
-4. **Generate Prisma client**
-   ```bash
-   npm run prisma:generate
-   ```
-
-5. **Run database migrations**
-   ```bash
-   npm run prisma:migrate
-   ```
-
-6. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-
-The server will start at `http://localhost:3000`
-
-## 📡 API Documentation
-
-### POST /identify
-
-Identifies and links contacts based on email and/or phone number.
-
-**Request Body:**
 ```json
 {
   "email": "string | null",
@@ -119,134 +28,88 @@ Identifies and links contacts based on email and/or phone number.
 
 At least one of `email` or `phoneNumber` must be provided.
 
-**Response:**
+**Response 200 OK**
+
 ```json
 {
   "contact": {
     "primaryContatctId": 1,
     "emails": ["primary@example.com", "secondary@example.com"],
-    "phoneNumbers": ["123456", "789012"],
-    "secondaryContactIds": [2, 3]
+    "phoneNumbers": ["123456"],
+    "secondaryContactIds": [2]
   }
 }
 ```
 
+The primary contact's email and phone appear first in their respective arrays. All secondary contact IDs are listed in `secondaryContactIds`.
+
+**Errors**
+
+| Status | Condition |
+|---|---|
+| 400 | Both `email` and `phoneNumber` are null or missing |
+| 500 | Internal server error |
+
 ### Example Requests
 
-**New Customer:**
 ```bash
-curl -X POST http://localhost:3000/identify \
+# New contact
+curl -X POST https://bitespeed-identity-a4bc.onrender.com/identify \
   -H "Content-Type: application/json" \
-  -d '{"email": "doc@hillvalley.edu", "phoneNumber": "121212"}'
-```
+  -d '{"email": "lorraine@hillvalley.edu", "phoneNumber": "123456"}'
 
-**Link by Phone:**
-```bash
-curl -X POST http://localhost:3000/identify \
+# Link by shared phone
+curl -X POST https://bitespeed-identity-a4bc.onrender.com/identify \
   -H "Content-Type: application/json" \
-  -d '{"email": "marty@hillvalley.edu", "phoneNumber": "121212"}'
-```
+  -d '{"email": "mcfly@hillvalley.edu", "phoneNumber": "123456"}'
 
-**Query Existing:**
-```bash
-curl -X POST http://localhost:3000/identify \
+# Query by email only
+curl -X POST https://bitespeed-identity-a4bc.onrender.com/identify \
   -H "Content-Type: application/json" \
-  -d '{"email": null, "phoneNumber": "121212"}'
+  -d '{"email": "lorraine@hillvalley.edu", "phoneNumber": null}'
 ```
 
-### GET /health
+## Identity Linking Logic
 
-Health check endpoint.
+1. No match - creates a new primary contact.
+2. Single cluster match - if the request introduces new info, creates a secondary contact linked to the primary; otherwise returns the existing cluster unchanged.
+3. Two distinct clusters match - merges them: the older primary stays primary, the newer primary is demoted to secondary, and all its secondaries are re-linked.
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2023-04-01T00:00:00.000Z"
-}
-```
+## Tech Stack
 
-## 🧪 Testing
+- Node.js 18 / TypeScript 5
+- Express.js
+- PostgreSQL 15 / Prisma ORM
+- Zod (request validation)
+- Jest + Supertest (28 tests: 14 unit, 14 integration)
 
-**Run all tests:**
+## Running Locally
+
+Prerequisites: Node.js 18+, Docker
+
 ```bash
-npm test
+git clone https://github.com/Thanush-41/bitespeed-identity-reconciliation
+cd bitespeed-identity-reconciliation
+npm install
+docker compose up
 ```
 
-**Run tests with coverage:**
+The server starts at http://localhost:3000. Swagger UI at http://localhost:3000/api-docs.
+
+Run all tests:
+
 ```bash
-npm run test:coverage
+docker compose --profile test run --rm test
 ```
 
-**Run tests in watch mode:**
-```bash
-npm run test:watch
-```
+## Environment Variables
 
-## 🚀 Deployment to Render.com
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NODE_ENV` | development / production / test |
+| `PORT` | Server port (default: 3000) |
 
-### 1. Create PostgreSQL Database
-
-1. Go to [Render Dashboard](https://dashboard.render.com)
-2. Click **New** → **PostgreSQL**
-3. Configure:
-   - Name: `bitespeed-db`
-   - Database: `bitespeed`
-   - User: `bitespeed`
-   - Region: Choose closest to your users
-4. Click **Create Database**
-5. Copy the **Internal Database URL**
-
-### 2. Create Web Service
-
-1. Click **New** → **Web Service**
-2. Connect your GitHub repository
-3. Configure:
-   - Name: `bitespeed-identity`
-   - Environment: `Node`
-   - Build Command: `npm install && npm run prisma:generate && npm run prisma:migrate:prod && npm run build`
-   - Start Command: `npm start`
-4. Add Environment Variables:
-   - `DATABASE_URL`: Paste the Internal Database URL from step 1
-   - `NODE_ENV`: `production`
-5. Click **Create Web Service**
-
-### 3. Verify Deployment
-
-Once deployed, test the endpoint:
-```bash
-curl -X POST https://your-app-name.onrender.com/identify \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "phoneNumber": "123456"}'
-```
-
-## 📊 Database Schema
-
-```prisma
-model Contact {
-  id             Int            @id @default(autoincrement())
-  phoneNumber    String?
-  email          String?
-  linkedId       Int?
-  linkPrecedence LinkPrecedence @default(primary)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
-}
-
-enum LinkPrecedence {
-  primary
-  secondary
-}
-```
-
-## 🔄 Identity Linking Logic
-
-1. **No Match**: Creates new primary contact
-2. **Single Match**: Creates secondary linked to existing primary
-3. **Multiple Matches (Different Clusters)**: Merges clusters - oldest primary stays, newer becomes secondary
-4. **Exact Match**: Returns existing cluster without changes
-
-## 📝 License
+## License
 
 ISC
