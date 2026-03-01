@@ -110,6 +110,4 @@ docker compose --profile test run --rm test
 | `NODE_ENV` | development / production / test |
 | `PORT` | Server port (default: 3000) |
 
-## License
 
-ISC
