@@ -28,3 +28,9 @@ coverage/
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+
+# Screenshots
+*.png
+
+# Plan files
+**/*.prompt.md
