@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bitespeed Identity Reconciliation - API Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+    h1 { font-size: 1.8rem; color: #38bdf8; margin-bottom: 0.5rem; }
+    .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.95rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .test-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.25rem; }
+    .test-card h3 { color: #7dd3fc; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; margin-right: 6px; }
+    .badge-pending { background: #475569; color: #94a3b8; }
+    .badge-pass { background: #166534; color: #86efac; }
+    .badge-fail { background: #7f1d1d; color: #fca5a5; }
+    .request-box { background: #0f172a; border-radius: 8px; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.75rem; }
+    .response-box { background: #0f172a; border-radius: 8px; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; color: #4ade80; min-height: 60px; white-space: pre-wrap; word-break: break-all; }
+    .response-box.error { color: #f87171; }
+    button { background: #0284c7; color: white; border: none; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; margin-top: 0.5rem; }
+    button:hover { background: #0369a1; }
+    #run-all { background: #059669; padding: 0.6rem 1.5rem; font-size: 1rem; margin-bottom: 2rem; border-radius: 8px; }
+    #run-all:hover { background: #047857; }
+    #summary { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; align-items: center; }
+    #summary .stat { text-align: center; }
+    #summary .num { font-size: 2rem; font-weight: bold; }
+    .pass-num { color: #4ade80; }
+    .fail-num { color: #f87171; }
+    .pending-num { color: #94a3b8; }
+    .reset-btn { background: #7c3aed; }
+    .reset-btn:hover { background: #6d28d9; }
+    .check { color: #4ade80; }
+    .cross { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>🔗 Bitespeed Identity Reconciliation</h1>
+  <p class="subtitle">API Test Suite — running against http://localhost:3000</p>
+
+  <div id="summary">
+    <div class="stat"><div class="num pending-num" id="s-total">0</div><div>Total</div></div>
+    <div class="stat"><div class="num pass-num" id="s-pass">0</div><div>Passed</div></div>
+    <div class="stat"><div class="num fail-num" id="s-fail">0</div><div>Failed</div></div>
+    <div style="margin-left:auto; display:flex; gap:0.75rem;">
+      <button onclick="resetDB()" class="reset-btn">🗑 Reset DB</button>
+      <button id="run-all" onclick="runAll()">▶ Run All Tests</button>
+    </div>
+  </div>
+
+  <div class="grid" id="tests-grid"></div>
+
+  <script>
+    const BASE = 'http://localhost:3000';
+
+    const TESTS = [
+      {
+        name: '1. New Customer',
+        desc: 'Brand new email+phone → creates primary',
+        body: { email: 'lorraine@hillvalley.edu', phoneNumber: '123456' },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.emails[0] === 'lorraine@hillvalley.edu'
+          && r.contact.secondaryContactIds.length === 0
+      },
+      {
+        name: '2. Same Phone New Email',
+        desc: 'Same phone, different email → secondary created',
+        body: { email: 'mcfly@hillvalley.edu', phoneNumber: '123456' },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.emails.includes('lorraine@hillvalley.edu')
+          && r.contact.emails.includes('mcfly@hillvalley.edu')
+          && r.contact.secondaryContactIds.length === 1
+      },
+      {
+        name: '3. Query by Phone Only',
+        desc: 'Null email, known phone → returns full cluster',
+        body: { email: null, phoneNumber: '123456' },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.emails.length === 2
+          && r.contact.phoneNumbers[0] === '123456'
+      },
+      {
+        name: '4. Query by Email Only (primary)',
+        desc: 'Known primary email, null phone → returns cluster',
+        body: { email: 'lorraine@hillvalley.edu', phoneNumber: null },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.emails[0] === 'lorraine@hillvalley.edu'
+      },
+      {
+        name: '5. Query by Email Only (secondary)',
+        desc: 'Secondary email, null phone → returns same cluster',
+        body: { email: 'mcfly@hillvalley.edu', phoneNumber: null },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.secondaryContactIds.length === 1
+      },
+      {
+        name: '6. Exact Match (no new contact)',
+        desc: 'Exact same email+phone → no new contact created',
+        body: { email: 'lorraine@hillvalley.edu', phoneNumber: '123456' },
+        validate: (r) => r.contact.primaryContatctId === 1
+          && r.contact.secondaryContactIds.length === 1
+      },
+      {
+        name: '7. Two Primaries Merge',
+        desc: 'George(id=3) + Biff(id=4) → george stays primary',
+        setup: [
+          { email: 'george@hillvalley.edu', phoneNumber: '919191' },
+          { email: 'biffsucks@hillvalley.edu', phoneNumber: '717171' }
+        ],
+        body: { email: 'george@hillvalley.edu', phoneNumber: '717171' },
+        validate: (r) =>
+          r.contact.emails.includes('george@hillvalley.edu')
+          && r.contact.emails.includes('biffsucks@hillvalley.edu')
+          && r.contact.phoneNumbers.includes('919191')
+          && r.contact.phoneNumbers.includes('717171')
+          && r.contact.emails[0] === 'george@hillvalley.edu'
+          && r.contact.secondaryContactIds.length === 1
+      },
+      {
+        name: '8. Validation: Both Null',
+        desc: 'Both null → 400 error',
+        body: { email: null, phoneNumber: null },
+        expectError: 400,
+        validate: (r, status) => status === 400
+      },
+      {
+        name: '9. Accept Number as PhoneNumber',
+        desc: 'phoneNumber as integer → accepted',
+        body: { email: 'doc@hillvalley.edu', phoneNumber: 121212 },
+        validate: (r) => r.contact.phoneNumbers[0] === '121212'
+      },
+      {
+        name: '10. Health Check',
+        desc: 'GET /health → { status: "ok" }',
+        method: 'GET',
+        url: '/health',
+        validate: (r) => r.status === 'ok'
+      }
+    ];
+
+    let results = {};
+
+    function renderTests() {
+      const grid = document.getElementById('tests-grid');
+      grid.innerHTML = TESTS.map((t, i) => `
+        <div class="test-card" id="card-${i}">
+          <h3>
+            <span class="badge badge-pending" id="badge-${i}">PENDING</span>
+            ${t.name}
+          </h3>
+          <div style="color:#94a3b8; font-size:0.82rem; margin-bottom:0.5rem;">${t.desc}</div>
+          <div class="request-box">POST /identify<br>${JSON.stringify(t.body || {}, null, 2)}</div>
+          <div class="response-box" id="resp-${i}">—</div>
+        </div>
+      `).join('');
+    }
+
+    async function callAPI(test) {
+      if (test.method === 'GET') {
+        const res = await fetch(BASE + (test.url || '/identify'));
+        return { data: await res.json(), status: res.status };
+      }
+      const res = await fetch(`${BASE}/identify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(test.body)
+      });
+      return { data: await res.json(), status: res.status };
+    }
+
+    async function resetDB() {
+      try {
+        await fetch(`${BASE}/test/reset`, { method: 'POST' });
+      } catch {}
+      // Reset is done via the reset endpoint (or just reload)
+      alert('To fully reset: re-run docker compose or use the TRUNCATE command.\nTest IDs will continue incrementing.');
+    }
+
+    async function runTest(i) {
+      const test = TESTS[i];
+      const badge = document.getElementById(`badge-${i}`);
+      const respEl = document.getElementById(`resp-${i}`);
+      badge.className = 'badge badge-pending';
+      badge.textContent = '...';
+
+      try {
+        // Run setup requests if any
+        if (test.setup) {
+          for (const body of test.setup) {
+            await fetch(`${BASE}/identify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+            await new Promise(r => setTimeout(r, 50));
+          }
+        }
+
+        const { data, status } = await callAPI(test);
+        const passed = test.validate(data, status);
+
+        respEl.className = passed ? 'response-box' : 'response-box error';
+        respEl.textContent = `HTTP ${status}\n${JSON.stringify(data, null, 2)}`;
+        badge.className = `badge ${passed ? 'badge-pass' : 'badge-fail'}`;
+        badge.textContent = passed ? '✓ PASS' : '✗ FAIL';
+        results[i] = passed;
+      } catch (err) {
+        respEl.className = 'response-box error';
+        respEl.textContent = `Error: ${err.message}`;
+        badge.className = 'badge badge-fail';
+        badge.textContent = '✗ ERROR';
+        results[i] = false;
+      }
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const vals = Object.values(results);
+      document.getElementById('s-total').textContent = vals.length;
+      document.getElementById('s-pass').textContent = vals.filter(Boolean).length;
+      document.getElementById('s-fail').textContent = vals.filter(v => !v).length;
+    }
+
+    async function runAll() {
+      results = {};
+      updateSummary();
+      for (let i = 0; i < TESTS.length; i++) {
+        await runTest(i);
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    renderTests();
+  </script>
+</body>
+</html>
