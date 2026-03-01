@@ -4,6 +4,11 @@ import { prisma } from '../config/database';
 
 const router = Router();
 
+// Root redirect → Swagger UI
+router.get('/', (req, res) => {
+  res.redirect('/api-docs');
+});
+
 // Mount routes
 router.use('/', identifyRoutes);
 

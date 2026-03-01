@@ -4,11 +4,11 @@ A backend service for FluxKart.com that identifies and links customer contacts a
 
 ## 🚀 Live Endpoint
 
-**Base URL:** `https://your-app-name.onrender.com`
+**Base URL:** `https://bitespeed-identity-a4bc.onrender.com`
 
-**Identify Endpoint:** `POST /identify`
+**Identify Endpoint:** `POST https://bitespeed-identity-a4bc.onrender.com/identify`
 
-> After deploying to Render.com, update this URL with your actual endpoint.
+**Swagger UI:** `https://bitespeed-identity-a4bc.onrender.com/api-docs`
 
 ## 📋 Features
 
